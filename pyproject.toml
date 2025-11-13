@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "erosolar"
+version = "0.1.0"
+description = "Universal LangGraph agent CLI with MCP support and terminal UI."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Erosolar AI" }]
+keywords = ["agent", "langgraph", "langchain", "cli", "mcp"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "langgraph",
+  "langchain",
+  "langchain-openai",
+  "faiss-cpu",
+  "mcp",
+  "numpy",
+  "pydantic>=2",
+  "rank-bm25",
+  "requests",
+  "typing_extensions",
+]
+
+[project.scripts]
+erosolar = "universal_agent:main"
+
+[project.urls]
+Homepage = "https://github.com/ErosolarAI/universal_agent"
+Source = "https://github.com/ErosolarAI/universal_agent"
+Issues = "https://github.com/ErosolarAI/universal_agent/issues"
+
+[tool.setuptools]
+py-modules = [
+  "agent_mcp_server",
+  "agent_toolkit",
+  "cli_ui",
+  "mcp_integration",
+  "tool_retrieval",
+  "universal_agent",
+]

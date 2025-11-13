@@ -1,0 +1,18 @@
+[
+  {
+    "name": "brave-search",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["brave-mcp"],
+    "namespace": "brave"
+  },
+  {
+    "name": "local-fs",
+    "transport": "sse",
+    "url": "http://127.0.0.1:7331/mcp",
+    "headers": {
+      "Authorization": "Bearer example-token"
+    },
+    "namespace": "fs"
+  }
+]
