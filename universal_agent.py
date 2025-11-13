@@ -35,6 +35,7 @@ from agent_toolkit import (
     write_text as core_write_text,
 )
 from mcp_integration import load_mcp_tools
+from persistent_tools import STORE as PERSISTENT_STORE
 from tool_retrieval import Embedder, ScoredTool, ToolRecord, ToolRetriever
 
 
@@ -221,6 +222,259 @@ def headless_browse(
 
 
 
+CUSTOM_TOOL_STORE = PERSISTENT_STORE
+
+
+def _coerce_json_dict(value: Any, *, field_name: str) -> Optional[Dict[str, Any]]:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{field_name} must be valid JSON: {exc}") from exc
+        if isinstance(parsed, dict):
+            return parsed
+        raise ValueError(f"{field_name} JSON payload must be an object.")
+    raise ValueError(f"{field_name} must be an object or JSON string.")
+
+
+class ToolLibraryRequest(BaseModel):
+    action: Literal["list", "create", "update", "delete", "show", "run"]
+    name: Optional[str] = Field(
+        None,
+        description="Name of the custom tool to operate on.",
+        min_length=1,
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Human readable summary for create/update operations.",
+    )
+    kind: Literal["shell", "python"] = Field(
+        "shell",
+        description="Execution backend for the tool.",
+    )
+    body: Optional[str] = Field(
+        None,
+        description="Shell command template or Python script body.",
+    )
+    args_schema: Optional[Any] = Field(
+        None,
+        description="Optional JSON schema describing expected arguments.",
+    )
+    metadata: Optional[Any] = Field(
+        None,
+        description="Optional JSON metadata stored alongside the tool.",
+    )
+    timeout: Optional[int] = Field(
+        None,
+        description="Override execution timeout (seconds).",
+    )
+    arguments: Optional[Any] = Field(
+        None,
+        description="Arguments to pass when running the stored tool.",
+    )
+
+
+def _format_tool_record(record) -> str:
+    args_text = json.dumps(record.args_schema or {}, indent=2, ensure_ascii=False)
+    meta_text = json.dumps(record.metadata or {}, indent=2, ensure_ascii=False)
+    return "\n".join(
+        [
+            f"Name: {record.name}",
+            f"Kind: {record.kind}",
+            f"Timeout: {record.timeout}s",
+            f"Description: {record.description}",
+            f"Created: {record.created_at}",
+            f"Updated: {record.updated_at}",
+            f"Args schema: {args_text}",
+            f"Metadata: {meta_text}",
+            f"Body:\n{record.body}",
+        ]
+    )
+
+
+@tool("tool_library", args_schema=ToolLibraryRequest)
+def tool_library(request: ToolLibraryRequest) -> str:
+    """Create, update, run, or list persistent custom tools backed by SQLite."""
+    store = CUSTOM_TOOL_STORE
+    try:
+        if request.action == "list":
+            records = store.list_tools()
+            if not records:
+                return "tool_library: No custom tools have been saved yet."
+            lines = ["tool_library: Stored tools:"]
+            for record in records:
+                lines.append(
+                    f"- {record.name} ({record.kind}, timeout {record.timeout}s): {record.description}"
+                )
+            return "\n".join(lines)
+
+        if request.action == "show":
+            if not request.name:
+                raise ValueError("Provide 'name' to inspect a tool.")
+            record = store.get_tool(request.name)
+            if record is None:
+                return f"tool_library: '{request.name}' was not found."
+            return _format_tool_record(record)
+
+        if request.action == "delete":
+            if not request.name:
+                raise ValueError("Provide 'name' to delete a tool.")
+            removed = store.delete_tool(request.name)
+            if not removed:
+                return f"tool_library: '{request.name}' did not exist."
+            return f"tool_library: Deleted '{request.name}'."
+
+        if request.action == "create":
+            if not request.name or not request.body or not request.description:
+                raise ValueError("name, description, and body are required to create a tool.")
+            args_schema = _coerce_json_dict(request.args_schema, field_name="args_schema") or {}
+            metadata = _coerce_json_dict(request.metadata, field_name="metadata") or {}
+            record = store.create_tool(
+                name=request.name,
+                description=request.description,
+                kind=request.kind,
+                body=request.body,
+                args_schema=args_schema,
+                metadata=metadata,
+                timeout=request.timeout or 180,
+            )
+            return f"tool_library: Created '{record.name}'."
+
+        if request.action == "update":
+            if not request.name:
+                raise ValueError("Provide 'name' to update a tool.")
+            args_schema = (
+                _coerce_json_dict(request.args_schema, field_name="args_schema")
+                if request.args_schema is not None
+                else None
+            )
+            metadata = (
+                _coerce_json_dict(request.metadata, field_name="metadata")
+                if request.metadata is not None
+                else None
+            )
+            record = store.update_tool(
+                request.name,
+                description=request.description,
+                kind=request.kind,
+                body=request.body,
+                args_schema=args_schema,
+                metadata=metadata,
+                timeout=request.timeout,
+            )
+            return f"tool_library: Updated '{record.name}'."
+
+        if request.action == "run":
+            if not request.name:
+                raise ValueError("Provide 'name' to run a stored tool.")
+            arguments = request.arguments
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError as exc:  # pragma: no cover - user error
+                    raise ValueError(f"arguments must be JSON: {exc}") from exc
+            if arguments is not None and not isinstance(arguments, dict):
+                raise ValueError("arguments must be an object mapping parameter names to values.")
+            output = store.run_tool(request.name, arguments=arguments or {})
+            return f"tool_library: Ran '{request.name}'.\n{output}"
+
+        raise ValueError(f"Unknown action '{request.action}'.")
+    except ValueError as exc:
+        return f"tool_library error: {exc}"
+
+
+class ResearchVaultRequest(BaseModel):
+    action: Literal["list", "get", "set", "append", "delete"]
+    namespace: str = Field(
+        "global",
+        description="Logical bucket (e.g., project name) for the stored note.",
+    )
+    key: Optional[str] = Field(
+        None,
+        description="Unique key within the namespace.",
+    )
+    content: Optional[str] = Field(
+        None,
+        description="Note body for set/append operations.",
+    )
+    metadata: Optional[Any] = Field(
+        None,
+        description="Optional JSON metadata stored with the note.",
+    )
+
+
+@tool("research_vault", args_schema=ResearchVaultRequest)
+def research_vault(request: ResearchVaultRequest) -> str:
+    """Persist, retrieve, or append research notes across agent runs."""
+    store = CUSTOM_TOOL_STORE
+    try:
+        if request.action == "list":
+            notes = store.list_notes(namespace=request.namespace if request.namespace else None)
+            if not notes:
+                scope = request.namespace or "all namespaces"
+                return f"research_vault: No notes found for {scope}."
+            lines = [
+                f"research_vault: Notes for {request.namespace or 'all namespaces'}:",
+            ]
+            for note in notes:
+                preview = (note.content or "").strip().splitlines()[:3]
+                summary = " ".join(preview)[:200] if preview else "(empty)"
+                lines.append(
+                    f"- {note.namespace}::{note.key} ({note.updated_at}) – {summary}"
+                )
+            return "\n".join(lines)
+
+        if request.action == "get":
+            if not request.key:
+                raise ValueError("Provide 'key' to retrieve a note.")
+            note = store.get_note(request.namespace, request.key)
+            if note is None:
+                return f"research_vault: '{request.namespace}::{request.key}' not found."
+            metadata = json.dumps(note.metadata or {}, indent=2, ensure_ascii=False)
+            return "\n".join(
+                [
+                    f"Namespace: {note.namespace}",
+                    f"Key: {note.key}",
+                    f"Created: {note.created_at}",
+                    f"Updated: {note.updated_at}",
+                    f"Metadata: {metadata}",
+                    "Content:",
+                    note.content,
+                ]
+            )
+
+        if request.action in {"set", "append"}:
+            if not request.key:
+                raise ValueError("Provide 'key' to store a note.")
+            if request.content is None:
+                raise ValueError("Provide 'content' when writing to the vault.")
+            metadata = _coerce_json_dict(request.metadata, field_name="metadata")
+            note = store.write_note(
+                request.namespace,
+                request.key,
+                request.content,
+                metadata=metadata,
+                mode="append" if request.action == "append" else "overwrite",
+            )
+            return f"research_vault: Stored '{note.namespace}::{note.key}' ({note.updated_at})."
+
+        if request.action == "delete":
+            if not request.key:
+                raise ValueError("Provide 'key' to delete a note.")
+            removed = store.delete_note(request.namespace, request.key)
+            if not removed:
+                return f"research_vault: '{request.namespace}::{request.key}' did not exist."
+            return f"research_vault: Deleted '{request.namespace}::{request.key}'."
+
+        raise ValueError(f"Unknown action '{request.action}'.")
+    except ValueError as exc:
+        return f"research_vault error: {exc}"
+
+
 TOOLS = [
     tavily_search,
     tavily_extract,
@@ -232,6 +486,8 @@ TOOLS = [
     write_text,
     save_shell_automation,
     headless_browse,
+    tool_library,
+    research_vault,
 ]
 
 MCP_BRIDGE = None
@@ -264,6 +520,8 @@ TOOL_TAG_OVERRIDES: Dict[str, List[str]] = {
     "write_text": ["filesystem", "write"],
     "save_shell_automation": ["automation", "scripts"],
     "headless_browse": ["browser", "automation", "playwright"],
+    "tool_library": ["tools", "automation", "meta"],
+    "research_vault": ["memory", "notes", "persistent"],
 }
 TOOL_EXAMPLE_OVERRIDES: Dict[str, List[str]] = {
     "tavily_search": ["tavily_search(query='latest ai models', max_results=5)"],
@@ -276,12 +534,19 @@ TOOL_EXAMPLE_OVERRIDES: Dict[str, List[str]] = {
     "write_text": ["write_text(path='notes/todo.txt', content='- item', mode='append')"],
     "save_shell_automation": ["save_shell_automation(name='backup', content='tar -czf backup.tgz .', run=False)"],
     "headless_browse": ["headless_browse(url='https://example.com', wait_selector='article h1')"],
+    "tool_library": [
+        "tool_library(action='create', name='process_csv', description='Clean CSV files', kind='python', body='...')"
+    ],
+    "research_vault": [
+        "research_vault(action='set', namespace='cancer-research', key='hypotheses', content='1. ...')"
+    ],
 }
 TOOL_RISK_OVERRIDES: Dict[str, str] = {
     "run_shell": "high",
     "save_shell_automation": "high",
     "headless_browse": "high",
     "run_python": "medium",
+    "tool_library": "high",
 }
 
 STICKY_TOOL_NAMES = [name for name in ("tavily_search", "run_python", "read_text") if name in TOOL_REGISTRY]

@@ -36,15 +36,16 @@ dependencies = [
 erosolar = "universal_agent:main"
 
 [project.urls]
-Homepage = "https://github.com/ErosolarAI/universal_agent"
-Source = "https://github.com/ErosolarAI/universal_agent"
-Issues = "https://github.com/ErosolarAI/universal_agent/issues"
+Homepage = "https://github.com/dragonghidra/universal_agent"
+Source = "https://github.com/dragonghidra/universal_agent"
+Issues = "https://github.com/dragonghidra/universal_agent/issues"
 
 [tool.setuptools]
 py-modules = [
   "agent_mcp_server",
   "agent_toolkit",
   "cli_ui",
+  "persistent_tools",
   "mcp_integration",
   "tool_retrieval",
   "universal_agent",

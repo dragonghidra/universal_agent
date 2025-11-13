@@ -18,8 +18,13 @@ from agent_toolkit import run_shell as core_run_shell
 def _state_dir() -> Path:
     base = os.environ.get("AGENT_STATE_DIR") or os.path.join("~", ".universal_agent")
     path = Path(base).expanduser()
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except OSError:
+        fallback = Path.cwd() / ".agent_state"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
 
 
 DEFAULT_DB_PATH = Path(
