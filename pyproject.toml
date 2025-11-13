@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "erosolar"
-version = "0.1.0"
-description = "Universal LangGraph agent CLI with MCP support and terminal UI."
+version = "0.2.0"
+description = "Universal LangGraph agent CLI with self-improvement, MCP support, and comprehensive task automation."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Erosolar AI" }]
@@ -36,15 +36,16 @@ dependencies = [
 erosolar = "universal_agent:main"
 
 [project.urls]
-Homepage = "https://github.com/dragonghidra/universal_agent"
-Source = "https://github.com/dragonghidra/universal_agent"
-Issues = "https://github.com/dragonghidra/universal_agent/issues"
+Homepage = "https://github.com/dragonghidra/erosolar"
+Source = "https://github.com/dragonghidra/erosolar"
+Issues = "https://github.com/dragonghidra/erosolar/issues"
 
 [tool.setuptools]
 py-modules = [
   "agent_mcp_server",
   "agent_toolkit",
   "cli_ui",
+  "enhanced_tools",
   "persistent_tools",
   "mcp_integration",
   "tool_retrieval",

@@ -9,6 +9,7 @@ import json
 import os
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Literal, Optional, Sequence, Set
 from urllib.parse import urlparse
@@ -33,6 +34,19 @@ from agent_toolkit import (
     run_shell as core_run_shell,
     save_shell_automation as core_save_shell_automation,
     write_text as core_write_text,
+)
+from enhanced_tools import (
+    edit_file as core_edit_file,
+    glob_files as core_glob_files,
+    grep_files as core_grep_files,
+    git_status as core_git_status,
+    git_diff as core_git_diff,
+    git_commit as core_git_commit,
+    git_log as core_git_log,
+    manage_todos as core_manage_todos,
+    edit_notebook_cell as core_edit_notebook_cell,
+    analyze_code_quality as core_analyze_code_quality,
+    web_search_simple as core_web_search_simple,
 )
 from mcp_integration import load_mcp_tools
 from persistent_tools import STORE as PERSISTENT_STORE
@@ -219,6 +233,112 @@ def headless_browse(
         emulate_device=emulate_device,
         timeout=timeout,
     )
+
+
+# ==================== ENHANCED FILE OPERATIONS ====================
+
+@tool
+def edit_file(file_path: str, old_string: str, new_string: str, replace_all: bool = False) -> str:
+    """Perform exact string replacement in a file. Safer than overwriting entire file."""
+    return core_edit_file(file_path, old_string, new_string, replace_all)
+
+
+@tool
+def glob_files(pattern: str, path: str = ".") -> str:
+    """Find files matching a glob pattern (e.g., '**/*.py', 'src/**/*.ts')."""
+    return core_glob_files(pattern, path)
+
+
+@tool
+def grep_files(
+    pattern: str,
+    path: str = ".",
+    *,
+    file_pattern: Optional[str] = None,
+    context_lines: int = 0,
+    case_insensitive: bool = False,
+    output_mode: Literal["files", "matches", "count"] = "files",
+    max_results: int = 100,
+) -> str:
+    """Search for regex pattern in files (ripgrep-like). Supports filtering by file type."""
+    return core_grep_files(
+        pattern,
+        path,
+        file_pattern=file_pattern,
+        context_lines=context_lines,
+        case_insensitive=case_insensitive,
+        output_mode=output_mode,
+        max_results=max_results,
+    )
+
+
+# ==================== GIT OPERATIONS ====================
+
+@tool
+def git_status(repo_path: str = ".") -> str:
+    """Get git status for a repository showing changed files."""
+    return core_git_status(repo_path)
+
+
+@tool
+def git_diff(repo_path: str = ".", staged: bool = False) -> str:
+    """Get git diff showing actual code changes. Use staged=True for staged changes."""
+    return core_git_diff(repo_path, staged)
+
+
+@tool
+def git_commit(message: str, repo_path: str = ".", add_all: bool = False) -> str:
+    """Create a git commit. Set add_all=True to stage all changes first."""
+    return core_git_commit(message, repo_path, add_all)
+
+
+@tool
+def git_log(repo_path: str = ".", max_commits: int = 10) -> str:
+    """Get recent git commit history."""
+    return core_git_log(repo_path, max_commits)
+
+
+# ==================== TASK MANAGEMENT ====================
+
+@tool
+def manage_todos(
+    action: Literal["add", "update", "list", "clear_completed"],
+    content: Optional[str] = None,
+    todo_id: Optional[int] = None,
+    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
+) -> str:
+    """Manage todos/tasks for tracking workflow. Actions: add, update, list, clear_completed."""
+    return core_manage_todos(action, content, todo_id, status, status_filter)
+
+
+# ==================== JUPYTER NOTEBOOKS ====================
+
+@tool
+def edit_notebook_cell(
+    notebook_path: str,
+    cell_index: int,
+    new_source: str,
+    cell_type: Literal["code", "markdown"] = "code",
+) -> str:
+    """Edit a specific cell in a Jupyter notebook (.ipynb file)."""
+    return core_edit_notebook_cell(notebook_path, cell_index, new_source, cell_type)
+
+
+# ==================== CODE ANALYSIS ====================
+
+@tool
+def analyze_code_quality(file_path: str, language: Optional[str] = None) -> str:
+    """Analyze code quality metrics, detect long lines, and find potential issues."""
+    return core_analyze_code_quality(file_path, language)
+
+
+# ==================== WEB OPERATIONS ====================
+
+@tool
+def web_search_simple(query: str, max_results: int = 5) -> str:
+    """Simple web search using DuckDuckGo API. For comprehensive search use tavily_search."""
+    return core_web_search_simple(query, max_results)
 
 
 
@@ -475,19 +595,209 @@ def research_vault(request: ResearchVaultRequest) -> str:
         return f"research_vault error: {exc}"
 
 
+class SelfImproveRequest(BaseModel):
+    action: Literal["analyze", "iterate", "store_learning", "get_learnings"]
+    task_description: Optional[str] = Field(
+        None,
+        description="Description of the task being worked on.",
+    )
+    result: Optional[str] = Field(
+        None,
+        description="Result or output to analyze.",
+    )
+    criteria: Optional[str] = Field(
+        None,
+        description="Success criteria or requirements to check against.",
+    )
+    learning: Optional[str] = Field(
+        None,
+        description="Learning or insight to store for future reference.",
+    )
+    category: Optional[str] = Field(
+        None,
+        description="Category for the learning (e.g., 'code_generation', 'api_usage', 'debugging').",
+    )
+
+
+@tool("self_improve", args_schema=SelfImproveRequest)
+def self_improve(request: SelfImproveRequest) -> str:
+    """Analyze task results, store learnings, and enable iterative self-improvement."""
+    store = CUSTOM_TOOL_STORE
+
+    try:
+        if request.action == "analyze":
+            if not request.task_description or not request.result:
+                raise ValueError("task_description and result are required for analysis.")
+
+            # Provide structured analysis framework
+            analysis = [
+                "Self-Improvement Analysis Framework:",
+                "",
+                f"Task: {request.task_description}",
+                f"Result: {request.result[:500]}..." if len(request.result) > 500 else f"Result: {request.result}",
+                "",
+                "Analysis Questions:",
+                "1. Did the result meet the requirements?",
+                "2. What worked well?",
+                "3. What could be improved?",
+                "4. What errors or issues occurred?",
+                "5. What should be tried differently?",
+                "",
+            ]
+
+            if request.criteria:
+                analysis.extend([
+                    f"Success Criteria: {request.criteria}",
+                    "Check each criterion and identify gaps.",
+                    "",
+                ])
+
+            analysis.extend([
+                "Recommendations:",
+                "- Use 'iterate' action to generate improved version",
+                "- Use 'store_learning' to save insights for future tasks",
+                "- Review stored learnings with 'get_learnings' before similar tasks",
+            ])
+
+            return "\n".join(analysis)
+
+        elif request.action == "iterate":
+            if not request.task_description:
+                raise ValueError("task_description required for iteration.")
+
+            # Retrieve relevant learnings
+            category = request.category or "general"
+            past_learnings = store.list_notes(namespace=f"learnings_{category}")
+
+            iteration_guide = [
+                "Iteration Guide:",
+                "",
+                f"Task: {request.task_description}",
+                "",
+                "Previous Result Analysis:",
+            ]
+
+            if request.result:
+                iteration_guide.append(f"Previous Result: {request.result[:300]}...")
+
+            if request.criteria:
+                iteration_guide.extend([
+                    "",
+                    f"Success Criteria: {request.criteria}",
+                    "Focus improvements on meeting these criteria.",
+                ])
+
+            if past_learnings:
+                iteration_guide.extend([
+                    "",
+                    "Relevant Past Learnings:",
+                ])
+                for note in past_learnings[:5]:  # Show top 5
+                    preview = note.content[:150].replace("\n", " ")
+                    iteration_guide.append(f"- {note.key}: {preview}")
+
+            iteration_guide.extend([
+                "",
+                "Iteration Strategy:",
+                "1. Identify specific gaps or failures in previous attempt",
+                "2. Generate concrete improvements addressing each gap",
+                "3. Apply learnings from similar past tasks",
+                "4. Test improvements incrementally",
+                "5. Document what works for future use",
+            ])
+
+            return "\n".join(iteration_guide)
+
+        elif request.action == "store_learning":
+            if not request.learning:
+                raise ValueError("learning content required to store.")
+
+            category = request.category or "general"
+            timestamp = datetime.now(timezone.utc).isoformat()
+            key = f"learning_{timestamp[:19].replace(':', '-')}"
+
+            learning_content = [
+                f"Task: {request.task_description or 'N/A'}",
+                f"Category: {category}",
+                f"Timestamp: {timestamp}",
+                "",
+                "Learning:",
+                request.learning,
+            ]
+
+            if request.criteria:
+                learning_content.extend([
+                    "",
+                    f"Context/Criteria: {request.criteria}",
+                ])
+
+            note = store.write_note(
+                namespace=f"learnings_{category}",
+                key=key,
+                content="\n".join(learning_content),
+                metadata={"category": category, "timestamp": timestamp},
+            )
+
+            return f"Stored learning in {note.namespace}::{note.key}. Use 'get_learnings' with category='{category}' to retrieve."
+
+        elif request.action == "get_learnings":
+            category = request.category or "general"
+            learnings = store.list_notes(namespace=f"learnings_{category}")
+
+            if not learnings:
+                return f"No learnings found for category '{category}'. Available categories can be checked in research_vault."
+
+            output = [f"Stored Learnings (category: {category}):", ""]
+            for note in learnings[-10:]:  # Show last 10
+                output.append(f"--- {note.key} ({note.updated_at}) ---")
+                output.append(note.content[:400])
+                output.append("")
+
+            return "\n".join(output)
+
+        else:
+            raise ValueError(f"Unknown action '{request.action}'.")
+
+    except ValueError as exc:
+        return f"self_improve error: {exc}"
+
+
 TOOLS = [
+    # Web & Search
     tavily_search,
     tavily_extract,
+    web_search_simple,
     get_weather,
+    # Code Execution
     run_python,
     run_shell,
+    # File Operations - Basic
     list_directory,
     read_text,
     write_text,
+    # File Operations - Enhanced
+    edit_file,
+    glob_files,
+    grep_files,
+    # Git Operations
+    git_status,
+    git_diff,
+    git_commit,
+    git_log,
+    # Automation & Scripts
     save_shell_automation,
+    # Browser Automation
     headless_browse,
+    # Jupyter Notebooks
+    edit_notebook_cell,
+    # Code Analysis
+    analyze_code_quality,
+    # Task Management
+    manage_todos,
+    # Persistent Storage
     tool_library,
     research_vault,
+    self_improve,
 ]
 
 MCP_BRIDGE = None
@@ -512,33 +822,61 @@ TOOL_REGISTRY: Dict[str, BaseTool] = {tool.name: tool for tool in TOOLS}
 TOOL_TAG_OVERRIDES: Dict[str, List[str]] = {
     "tavily_search": ["web", "search", "news"],
     "tavily_extract": ["web", "scrape"],
+    "web_search_simple": ["web", "search", "quick"],
     "get_weather": ["weather", "api"],
     "run_python": ["python", "code", "analysis"],
     "run_shell": ["shell", "terminal", "system"],
     "list_directory": ["filesystem", "inspect"],
     "read_text": ["filesystem", "read"],
     "write_text": ["filesystem", "write"],
+    "edit_file": ["filesystem", "edit", "refactor"],
+    "glob_files": ["filesystem", "search", "pattern"],
+    "grep_files": ["filesystem", "search", "regex", "code"],
+    "git_status": ["git", "vcs", "status"],
+    "git_diff": ["git", "vcs", "diff", "changes"],
+    "git_commit": ["git", "vcs", "commit"],
+    "git_log": ["git", "vcs", "history"],
     "save_shell_automation": ["automation", "scripts"],
     "headless_browse": ["browser", "automation", "playwright"],
+    "edit_notebook_cell": ["jupyter", "notebook", "ipynb", "edit"],
+    "analyze_code_quality": ["code", "analysis", "quality", "review"],
+    "manage_todos": ["task", "todo", "workflow", "planning"],
     "tool_library": ["tools", "automation", "meta"],
     "research_vault": ["memory", "notes", "persistent"],
+    "self_improve": ["improvement", "iteration", "learning", "meta"],
 }
 TOOL_EXAMPLE_OVERRIDES: Dict[str, List[str]] = {
     "tavily_search": ["tavily_search(query='latest ai models', max_results=5)"],
     "tavily_extract": ["tavily_extract(url='https://example.com/article')"],
+    "web_search_simple": ["web_search_simple(query='python tutorials', max_results=5)"],
     "get_weather": ["get_weather(location='Paris, France', units='metric')"],
     "run_python": ["run_python(code='print(1+1)', timeout=30)"],
     "run_shell": ["run_shell(command='ls -la', timeout=60)"],
     "list_directory": ["list_directory(path='~/projects')"],
     "read_text": ["read_text(path='README.md', max_chars=4000)"],
     "write_text": ["write_text(path='notes/todo.txt', content='- item', mode='append')"],
+    "edit_file": ["edit_file(file_path='config.py', old_string='DEBUG = False', new_string='DEBUG = True')"],
+    "glob_files": ["glob_files(pattern='**/*.py', path='src')"],
+    "grep_files": ["grep_files(pattern='import.*pandas', file_pattern='*.py', output_mode='matches')"],
+    "git_status": ["git_status(repo_path='.')"],
+    "git_diff": ["git_diff(repo_path='.', staged=False)"],
+    "git_commit": ["git_commit(message='Fix bug in parser', add_all=True)"],
+    "git_log": ["git_log(repo_path='.', max_commits=10)"],
     "save_shell_automation": ["save_shell_automation(name='backup', content='tar -czf backup.tgz .', run=False)"],
     "headless_browse": ["headless_browse(url='https://example.com', wait_selector='article h1')"],
+    "edit_notebook_cell": ["edit_notebook_cell(notebook_path='analysis.ipynb', cell_index=0, new_source='import pandas as pd')"],
+    "analyze_code_quality": ["analyze_code_quality(file_path='main.py', language='python')"],
+    "manage_todos": ["manage_todos(action='add', content='Implement feature X')"],
     "tool_library": [
         "tool_library(action='create', name='process_csv', description='Clean CSV files', kind='python', body='...')"
     ],
     "research_vault": [
         "research_vault(action='set', namespace='cancer-research', key='hypotheses', content='1. ...')"
+    ],
+    "self_improve": [
+        "self_improve(action='analyze', task_description='scrape website', result='got 404 error', criteria='extract all product names')",
+        "self_improve(action='iterate', task_description='retry scraping', result='404', criteria='extract products')",
+        "self_improve(action='store_learning', learning='Always check robots.txt before scraping', category='web_scraping')",
     ],
 }
 TOOL_RISK_OVERRIDES: Dict[str, str] = {
@@ -547,11 +885,20 @@ TOOL_RISK_OVERRIDES: Dict[str, str] = {
     "headless_browse": "high",
     "run_python": "medium",
     "tool_library": "high",
+    "edit_file": "medium",
+    "write_text": "medium",
+    "git_commit": "medium",
+    "edit_notebook_cell": "medium",
 }
 
-STICKY_TOOL_NAMES = [name for name in ("tavily_search", "run_python", "read_text") if name in TOOL_REGISTRY]
+STICKY_TOOL_NAMES = [
+    name for name in ("tavily_search", "run_python", "read_text", "glob_files", "grep_files") if name in TOOL_REGISTRY
+]
 SAFE_FALLBACK_TOOL_NAMES = [
-    name for name in ("tavily_search", "run_python", "read_text", "list_directory") if name in TOOL_REGISTRY
+    name for name in (
+        "tavily_search", "run_python", "read_text", "list_directory",
+        "glob_files", "grep_files", "git_status", "manage_todos"
+    ) if name in TOOL_REGISTRY
 ]
 SAFE_FALLBACK_TOOLS: List[BaseTool] = [TOOL_REGISTRY[name] for name in SAFE_FALLBACK_TOOL_NAMES]
 if not SAFE_FALLBACK_TOOLS:
@@ -899,16 +1246,34 @@ PLANNER_SYSTEM = SystemMessage(
     content=(
         "You are a planning agent. Read the user's goal and design a minimal plan the workers can execute. "
         "Workers and executors have the following tools:\n"
-        "- tavily_search(query, max_results, search_depth) for live research\n"
-        "- tavily_extract(url) for scraping a known page\n"
-        "- get_weather(location, units) for meteorological data\n"
+        "WEB & SEARCH:\n"
+        "- tavily_search(query, max_results, search_depth) for comprehensive web research\n"
+        "- tavily_extract(url) for scraping known pages\n"
+        "- web_search_simple(query, max_results) for quick DuckDuckGo searches\n"
+        "- get_weather(location, units) for weather data\n"
+        "CODE EXECUTION:\n"
         "- run_python(code, timeout) to execute Python code\n"
-        "- run_shell(command, timeout, cwd) for arbitrary terminal commands\n"
-        "- list_directory(path) to inspect the filesystem\n"
-        "- read_text(path, max_chars) to read files\n"
-        "- write_text(path, content, mode) to create or edit files\n"
-        "- save_shell_automation(name, content, run, timeout) to persist or execute scripts\n"
-        "- headless_browse(...) to drive a headless browser (HTML, screenshots, JS evaluation).\n"
+        "- run_shell(command, timeout, cwd) for terminal commands\n"
+        "FILE OPERATIONS:\n"
+        "- list_directory(path), read_text(path, max_chars), write_text(path, content, mode)\n"
+        "- edit_file(file_path, old_string, new_string, replace_all) for precise edits\n"
+        "- glob_files(pattern, path) to find files by pattern (e.g., '**/*.py')\n"
+        "- grep_files(pattern, path, file_pattern, output_mode) for regex search in files\n"
+        "GIT OPERATIONS:\n"
+        "- git_status(repo_path), git_diff(repo_path, staged), git_commit(message, add_all), git_log(repo_path)\n"
+        "AUTOMATION:\n"
+        "- save_shell_automation(name, content, run, timeout) to persist/execute scripts\n"
+        "- headless_browse(...) for browser automation (forms, screenshots, JS)\n"
+        "JUPYTER:\n"
+        "- edit_notebook_cell(notebook_path, cell_index, new_source, cell_type)\n"
+        "CODE ANALYSIS:\n"
+        "- analyze_code_quality(file_path, language) for code metrics and issue detection\n"
+        "TASK MANAGEMENT:\n"
+        "- manage_todos(action, content, todo_id, status) to track workflow\n"
+        "PERSISTENT STORAGE:\n"
+        "- tool_library(...) to create/update/run custom tools\n"
+        "- research_vault(...) to persist notes across runs\n"
+        "- self_improve(...) to analyze/iterate/learn from attempts\n\n"
         "Choose mode: 'single' if one step suffices, 'sequential' if steps depend on each other, "
         "'parallel' if steps are independent and can run concurrently. Keep steps crisp and tool-friendly. "
         "Respond ONLY with a JSON object shaped like "
@@ -985,13 +1350,24 @@ executor_llm = _make_deepseek_chat_model(streaming=True)
 EXECUTOR_SYSTEM = SystemMessage(
     content=(
         "You are the EXECUTOR. Follow the provided plan as a guide and use ReAct:\n"
-        "Think about what to do next, choose a tool if needed, observe the result, and repeat until you can answer.\n"
-        "Available tools: tavily_search/query for research, tavily_extract(url) for page content once you have a URL,\n"
-        "get_weather(location, units) for conditions, run_python(code, timeout) to execute multi-step Python code,\n"
-        "run_shell(command, timeout, cwd) for any terminal command (you have full permission, including launching apps or browsers),\n"
-        "list_directory/read_text/write_text for filesystem inspection and editing,\n"
-        "save_shell_automation(...) to persist and replay scripts, and headless_browse(...) for Playwright automation.\n"
-        "You may call tools multiple times. Stop calling tools when you have enough information.\n"
+        "Think about what to do next, choose a tool if needed, observe the result, and repeat until you can answer.\n\n"
+        "Available tools (COMPREHENSIVE TOOLKIT):\n"
+        "WEB & SEARCH: tavily_search, tavily_extract, web_search_simple, get_weather\n"
+        "CODE EXECUTION: run_python, run_shell (full system access)\n"
+        "FILE OPS (Basic): list_directory, read_text, write_text\n"
+        "FILE OPS (Advanced): edit_file (precise find/replace), glob_files (pattern matching), grep_files (regex search)\n"
+        "GIT: git_status, git_diff, git_commit, git_log\n"
+        "AUTOMATION: save_shell_automation, headless_browse (browser automation for forms/accounts/screenshots)\n"
+        "JUPYTER: edit_notebook_cell (modify .ipynb cells)\n"
+        "CODE ANALYSIS: analyze_code_quality (metrics, issues, long lines)\n"
+        "TASK MANAGEMENT: manage_todos (add/update/list/clear todos)\n"
+        "PERSISTENT: tool_library (custom tools), research_vault (notes), self_improve (analyze/iterate/learn)\n\n"
+        "You may call tools multiple times. If a task fails, use self_improve to analyze why and iterate with improvements.\n"
+        "Use manage_todos to track complex multi-step workflows.\n"
+        "Use edit_file for surgical code changes instead of rewriting entire files.\n"
+        "Use glob_files and grep_files to find files and search code efficiently.\n"
+        "Use git operations to inspect and commit changes.\n"
+        "Stop calling tools when you have enough information or achieved the goal.\n"
         "When finished, reply with a concise, user-ready answer. Do not include internal chain-of-thought."
     )
 )
@@ -1294,8 +1670,8 @@ def reprint_prompt():
 def run_cli_chat(conversation: ConversationManager, stop_event: threading.Event):
     """Interactive multi-turn chat loop in the terminal."""
     cli_ui.print_banner(
-        "Universal Problem-Solving Agent",
-        "Planner creates strategy; executor researches, codes, and runs commands until done.",
+        "Erosolar",
+        "Universal AGI Agent - Advanced reasoning, coding, research, and task automation.",
     )
     cli_ui.print_status("Type 'exit' or 'quit' to leave. Use --verbose for tool traces.", kind="info")
     CLI_READY.set()
